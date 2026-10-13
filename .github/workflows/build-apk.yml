@@ -1,10 +1,10 @@
+
 name: Build Nexus Android APK
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout repository
@@ -30,13 +32,13 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
 
-      - name: Accept remaining Android SDK licenses
+      - name: Accept Android SDK licenses
         shell: bash
         run: |
+          mkdir -p "$ANDROID_HOME/licenses"
           yes | sdkmanager --licenses || true
+          sdkmanager --licenses </dev/null || true
 
       - name: Install Android SDK packages
         run: |
