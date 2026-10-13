@@ -1,8 +1,13 @@
-
 name: Build Nexus Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -18,7 +23,7 @@ jobs:
           node-version: 22
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
@@ -26,35 +31,29 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - name: Find and build project
+      - name: Accept Android SDK licenses
+        shell: bash
         run: |
-          mkdir extracted
-          ZIP="$(find . -maxdepth 1 -name '*.zip' | head -n 1)"
-          if [ -n "$ZIP" ]; then
-            unzip -q "$ZIP" -d extracted
-          else
-            cp -R . extracted/project
-          fi
+          set +o pipefail
+          yes | sdkmanager --licenses
 
-          PKG="$(find extracted -name package.json -not -path '*/node_modules/*' | head -n 1)"
-          if [ -z "$PKG" ]; then
-            echo "ERROR: No package.json found. The project files or ZIP must be in the repository."
-            exit 1
-          fi
-
-          PROJECT_DIR="$(dirname "$PKG")"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Build Android app
+      - name: Install Android SDK packages
         run: |
-          cd "$PROJECT_DIR"
-          npm install
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Extract browser project
+        run: |
+          mkdir -p browser-project
+          unzip -o nexus-project.zip -d browser-project
+          test -f browser-project/package.json
+
+      - name: Build Nexus APK
+        working-directory: browser-project
+        run: |
+          npm ci
           npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
           npm run build
-          npx cap init Nexus com.uzairmuneeb.nexus --web-dir dist
+          printf '{"appId":"com.uzairmuneeb.nexus","appName":"Nexus","webDir":"dist"}' > capacitor.config.json
           npx cap add android
           npx cap sync android
           cd android
@@ -65,5 +64,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Nexus-Android-APK
-          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
-          
+          path: browser-project/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
