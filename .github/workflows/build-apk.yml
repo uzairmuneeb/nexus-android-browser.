@@ -1,0 +1,69 @@
+
+name: Build Nexus Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Find and build project
+        run: |
+          mkdir extracted
+          ZIP="$(find . -maxdepth 1 -name '*.zip' | head -n 1)"
+          if [ -n "$ZIP" ]; then
+            unzip -q "$ZIP" -d extracted
+          else
+            cp -R . extracted/project
+          fi
+
+          PKG="$(find extracted -name package.json -not -path '*/node_modules/*' | head -n 1)"
+          if [ -z "$PKG" ]; then
+            echo "ERROR: No package.json found. The project files or ZIP must be in the repository."
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$PKG")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build Android app
+        run: |
+          cd "$PROJECT_DIR"
+          npm install
+          npm install @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
+          npm run build
+          npx cap init Nexus com.uzairmuneeb.nexus --web-dir dist
+          npx cap add android
+          npx cap sync android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nexus-Android-APK
+          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          
